@@ -115,8 +115,9 @@ export default function Setup({
         )}
 
         <div className="rule-note">
-          ⚠️ Kurallar: Şıkka tıklayınca cevap <b>kilitlenir</b> ve sonraki soruya geçilir. Geri dönüş ve cevap
-          değiştirme yoktur. İstersen soruyu boş bırakabilirsin.
+          ℹ️ Şık seçince otomatik olarak sonraki soruya geçilir. Gördüğün sorular arasında dilediğin gibi
+          <b> geri dönebilir</b>, paletten atlayabilir ve <b>cevabını değiştirebilirsin</b>. Cevaplamadan
+          "Sonraki" ile geçtiğin sorular boş kalır.
         </div>
 
         <button className="btn primary big" disabled={!selected} onClick={() => void start()}>

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { extractPageTexts } from '../src/parser/extract'
 import { detect } from '../src/parser/detect'
+import { removeWatermarks } from '../src/parser/removeWatermark'
 
 const path = process.argv[2]
 if (!path) {
@@ -11,8 +12,10 @@ if (!path) {
   process.exit(1)
 }
 
-const data = new Uint8Array(await readFile(path))
-const doc = await getDocument({ data }).promise
+const raw = new Uint8Array(await readFile(path))
+const { bytes, removedBlocks } = await removeWatermarks(raw)
+if (removedBlocks) console.log(`filigran: ${removedBlocks} blok temizlendi`)
+const doc = await getDocument({ data: bytes }).promise
 const pages = await extractPageTexts(doc)
 const det = detect(pages)
 

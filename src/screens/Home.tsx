@@ -6,6 +6,7 @@ import { formatDate, formatDuration } from '../format'
 import { scoreSession } from '../scoring'
 
 const PHASE_LABEL: Record<ParseProgress['phase'], string> = {
+  clean: 'Filigran denetleniyor',
   read: 'PDF okunuyor',
   detect: 'Sorular tespit ediliyor',
   crop: 'Soru görselleri kırpılıyor',
@@ -96,7 +97,9 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
         <h1>
           Docu<span className="accent">Quiz</span>
         </h1>
-        <p className="subtitle">ÖSYM PDF'ini yükle, soruları tek tek çöz. Geri dönüş yok — gerçek sınav gibi.</p>
+        <p className="subtitle">
+          ÖSYM PDF'ini yükle, soruları tek tek çöz. Sorular arasında gezin, cevabını değiştir — süre sağda.
+        </p>
       </header>
 
       <section
