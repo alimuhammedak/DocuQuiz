@@ -5,6 +5,7 @@ import type {
   PageText,
   Region,
   SectionInfo,
+  SubjectInfo,
   TextItem,
 } from './types'
 import { parseAnswerKey } from './answerKey'
@@ -20,7 +21,12 @@ import { parseAnswerKey } from './answerKey'
 
 const QNUM_RE = /^(\d{1,3})\.$/
 const GROUP_RE = /^(\d{1,3})\s*\.?\s*[-–]\s*(\d{1,3})\s*\.?\s*sorular/i
-const SECTION_MARK_RE = /BU BÖLÜMDE|CEVAPLAYACAĞINIZ/
+// Test/bölüm başlangıç sayfası işaretçisi (sayfa sınıflandırma için).
+const SECTION_MARK_RE = /BU BÖLÜMDE|CEVAPLAYACAĞINIZ|Bu testte|SORU (SAYISI|VARDIR)/i
+// Test-başı sayfada talimat bloğunu (ve içindeki sahte "1."/"2." kurallarını)
+// soru alanından dışlamak için üst-sınır (topBound) satır kalıbı.
+const INSTR_LINE_RE =
+  /BU BÖLÜMDE|CEVAPLAYACAĞINIZ|Bu testte|SORU (SAYISI|VARDIR)|Cevaplarınızı|işaretleyiniz|alanlar[ıi]na ait/i
 const END_RE = /TEST BİTTİ|SINAV BİTTİ|BÖLÜM BİTTİ|CEVAPLARINIZI KONTROL/
 const FOOTER_RE = /Diğer sayfaya geçiniz/i
 
@@ -97,12 +103,65 @@ function layoutPage(page: PageText, isSectionStart: boolean): PageLayout {
   for (const col of cols) {
     for (const line of col) {
       if (FOOTER_RE.test(line.text)) footBound = Math.min(footBound, line.top - 4)
-      if (isSectionStart && line.top < H * 0.4 && SECTION_MARK_RE.test(line.text)) {
+      if (isSectionStart && line.top < H * 0.4 && INSTR_LINE_RE.test(line.text)) {
         topBound = Math.max(topBound, line.bottom + 8)
       }
     }
   }
   return { topBound, footBound, lines: cols }
+}
+
+interface SubArea {
+  name: string
+  start: number
+  end: number
+}
+
+/**
+ * Test-başı talimatından dersleri çıkarır:
+ *  "Bu testte sırasıyla Türk Dili ve Edebiyatı (1-24), Tarih-1 (25-34) …
+ *   alanlarına ait toplam N soru vardır."  → [{Türk Dili…,1,24},{Tarih-1,25,34},…]
+ * Tek ders ise (sırasıyla listesi yok) rule-2'den ("cevap kâğıdının X Testi için")
+ * ders adı alınır.
+ */
+function parseSubjects(pageText: string): { subAreas: SubArea[]; singleName?: string } {
+  const flat = pageText.replace(/\s+/g, ' ')
+  const subAreas: SubArea[] = []
+  const seg = /sırasıyla(.+?)alanlar[ıi]na ait/i.exec(flat)
+  if (seg) {
+    const re = /([^,()]+?)\s*\((\d+)\s*[-–]\s*(\d+)\)/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(seg[1]))) {
+      let name = m[1].trim()
+      // "… almak zorunda olmayan … için Felsefe Grubu" gibi açıklamalı adlarda
+      // gerçek ders adı son "için"den sonra gelir.
+      if (/ için /i.test(name)) name = name.split(/ için /i).pop()!.trim()
+      name = name.replace(/^[\s,;.:-]+|[\s,;.:-]+$/g, '')
+      if (name && name.length <= 60) subAreas.push({ name, start: +m[2], end: +m[3] })
+    }
+  }
+  let singleName: string | undefined
+  const r2 = /cevap k[âa]ğıdının\s+(.+?)\s+Test[İi]\s+için/i.exec(flat)
+  if (r2) singleName = r2[1].trim()
+  return { subAreas, singleName }
+}
+
+/** Test (numara alanı) görünen adı: rule-2 > başlık > "Test i". */
+function extractSectionName(page: PageText, fallbackIndex: number): string {
+  const flat = joinPageText(page).replace(/\s+/g, ' ')
+  const r2 = /cevap k[âa]ğıdının\s+(.+?)\s+Test[İi]\s+için/i.exec(flat)
+  if (r2) return r2[1].trim()
+  for (const line of buildLines(page.items)) {
+    if (line.top > page.height * 0.4) break
+    for (const it of line.items) {
+      const t = it.str.trim()
+      if (t.length >= 5 && t.length < 40 && /(BÖLÜM|BÖLÜMÜ|TESTİ|TESTI)\s*$/.test(t) &&
+          !/BU BÖLÜMDE/.test(t) && !t.includes('/')) {
+        return t
+      }
+    }
+  }
+  return `Test ${fallbackIndex + 1}`
 }
 
 /** Sütun kenarına hizalı sayılabilmesi için işaretçi kümesinin soluna göre tolerans. */
@@ -131,35 +190,33 @@ export function detect(pages: PageText[]): Detection {
 
   const firstKeyPage = keyPages.length ? Math.min(...keyPages) : pages.length
 
-  // 2) Bölüm aralıkları ve adları
+  // 2) Test (numara alanı) aralıkları ve adları
   const sections: SectionInfo[] = sectionStartPages.map((start, i) => {
     const end = Math.min(
       (sectionStartPages[i + 1] ?? pages.length) - 1,
       firstKeyPage - 1,
     )
-    const page = pages[start]
-    // Başlık, koşu üstbilgisiyle aynı satıra düşebildiği için satır yerine
-    // tek tek öğelere bakılır ("SAYISAL BÖLÜM" tek öğe olarak gelir).
-    let name = `Bölüm ${i + 1}`
-    outer: for (const line of buildLines(page.items)) {
-      if (line.top > page.height * 0.4) break
-      for (const it of line.items) {
-        const t = it.str.trim()
-        if (t.length >= 5 && t.length < 40 && /(BÖLÜM|BÖLÜMÜ|TESTİ|TESTI)\s*$/.test(t) &&
-            !/BU BÖLÜMDE/.test(t) && !t.includes('/')) {
-          name = t
-          break outer
-        }
-      }
-    }
-    return { name, firstPage: start, lastPage: end, questionCount: 0 }
+    return { name: extractSectionName(pages[start], i), firstPage: start, lastPage: end, questionCount: 0 }
   })
+  // Test adlarını benzersizleştir (qid çakışmasın)
+  const nameCount = new Map<string, number>()
+  for (const s of sections) {
+    const n = (nameCount.get(s.name) ?? 0) + 1
+    nameCount.set(s.name, n)
+    if (n > 1) s.name = `${s.name} (${n})`
+  }
 
   // 3) Bölüm bölüm soru/grup tespiti
   const questions: DetectedQuestion[] = []
   const groups: DetectedGroup[] = []
 
   for (const section of sections) {
+    // Bu testin ders aralıkları (kullanıcıya gösterilecek bölünme)
+    const secSub = parseSubjects(joinPageText(pages[section.firstPage]))
+    const subjectFor = (num: number): string => {
+      for (const sa of secSub.subAreas) if (num >= sa.start && num <= sa.end) return sa.name
+      return secSub.singleName || section.name
+    }
     const layouts = new Map<number, PageLayout>()
     for (let pi = section.firstPage; pi <= section.lastPage; pi++) {
       layouts.set(pi, layoutPage(pages[pi], pi === section.firstPage))
@@ -255,7 +312,7 @@ export function detect(pages: PageText[]): Detection {
       if (c.num === expected) {
         if (activeGroup && c.num! > activeGroup.end) activeGroup = undefined
         const q: DetectedQuestion = {
-          section: section.name, number: c.num!, regions: [],
+          section: section.name, subject: subjectFor(c.num!), number: c.num!, regions: [],
           groupId: activeGroup && c.num! >= activeGroup.start && c.num! <= activeGroup.end
             ? activeGroup.id : undefined,
         }
@@ -315,9 +372,24 @@ export function detect(pages: PageText[]): Detection {
   const keyPageTexts = keyPages.map((pi) => pages[pi])
   const answerKey = parseAnswerKey(keyPageTexts, sections.map((s) => s.name), warnings)
 
+  // 6) Dersler (kullanıcıya gösterilen bölünme): görülme sırasını koru, adı
+  //    tekrar edenleri (ör. SB2'de iki "Felsefe Grubu") birleştir.
+  const subjects: SubjectInfo[] = []
+  const subjIndex = new Map<string, SubjectInfo>()
+  for (const q of questions) {
+    let s = subjIndex.get(q.subject)
+    if (!s) {
+      s = { name: q.subject, questionCount: 0, hasAnswerKey: false }
+      subjIndex.set(q.subject, s)
+      subjects.push(s)
+    }
+    s.questionCount++
+    if (answerKey[q.section]?.[q.number] != null) s.hasAnswerKey = true
+  }
+
   for (const s of sections) {
     if (s.questionCount === 0) warnings.push(`"${s.name}" bölümünde soru bulunamadı.`)
   }
 
-  return { sections, questions, groups, answerKey, warnings }
+  return { sections, subjects, questions, groups, answerKey, warnings }
 }

@@ -120,7 +120,16 @@ export default function Results({ sessionId, navigate }: { sessionId: string; na
         <button className="btn primary big grow" onClick={() => navigate({ name: 'review', sessionId, index: 0 })}>
           Soruları İncele
         </button>
-        <button className="btn ghost big" onClick={() => navigate({ name: 'setup', examId: session.examId })}>
+        <button
+          className="btn ghost big"
+          onClick={() =>
+            navigate({
+              name: 'setup',
+              examId: session.examId,
+              scope: { subjectFilter: session.subjectFilter, label: session.section },
+            })
+          }
+        >
           Tekrar Çöz
         </button>
       </div>

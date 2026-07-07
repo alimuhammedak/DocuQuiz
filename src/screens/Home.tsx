@@ -4,6 +4,7 @@ import { db, deleteExam, questionId, type Exam, type Session } from '../db'
 import { parsePdf, type ParseProgress } from '../parser/parsePdf'
 import { formatDate, formatDuration } from '../format'
 import { scoreSession } from '../scoring'
+import Modal from '../components/Modal'
 
 const PHASE_LABEL: Record<ParseProgress['phase'], string> = {
   clean: 'Filigran denetleniyor',
@@ -19,6 +20,7 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
   const [progress, setProgress] = useState<ParseProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [scopeExam, setScopeExam] = useState<Exam | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
@@ -48,6 +50,7 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
         name: file.name.replace(/\.pdf$/i, ''),
         createdAt: Date.now(),
         sections: result.sections,
+        subjects: result.subjects,
         warnings: result.warnings.length ? result.warnings : undefined,
       }
       await db.transaction('rw', db.exams, db.questions, async () => {
@@ -57,6 +60,7 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
             id: questionId(examId, q.section, q.number),
             examId,
             section: q.section,
+            subject: q.subject,
             number: q.number,
             images: q.images,
             contextImages: q.contextImages,
@@ -186,50 +190,38 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
       <section className="block">
         <h2>Sınavlarım</h2>
         {exams.length === 0 && <div className="muted empty">Henüz sınav yok. Yukarıdan bir PDF yükle.</div>}
-        {exams.map((exam) => (
-          <div key={exam.id} className="card exam-card">
-            <div className="row">
-              <div className="grow">
-                <div className="card-title">{exam.name}</div>
-                <div className="muted">{formatDate(exam.createdAt)}</div>
-              </div>
-              <button className="btn ghost danger" onClick={() => void removeExam(exam)}>
-                Sil
-              </button>
-            </div>
-            <div className="section-list">
-              {exam.sections.map((sec) => (
-                <div key={sec.name} className="section-row">
-                  <div className="grow">
-                    <span className="section-name">{sec.name}</span>
-                    <span className="muted"> · {sec.questionCount} soru</span>
-                    {sec.hasAnswerKey ? (
-                      <span className="tag ok">cevap anahtarı ✓</span>
-                    ) : (
-                      <span className="tag warn">cevap anahtarı yok</span>
-                    )}
+        {exams.map((exam) => {
+          const subjects = subjectsOf(exam)
+          const total = subjects.reduce((n, s) => n + s.questionCount, 0)
+          return (
+            <div key={exam.id} className="card exam-card">
+              <div className="row">
+                <button className="grow exam-open" onClick={() => setScopeExam(exam)}>
+                  <div className="card-title">{exam.name}</div>
+                  <div className="muted">
+                    {formatDate(exam.createdAt)} · {subjects.length} ders · {total} soru
                   </div>
-                  <button
-                    className="btn primary"
-                    onClick={() => navigate({ name: 'setup', examId: exam.id, section: sec.name })}
-                  >
-                    Başlat
-                  </button>
-                </div>
-              ))}
+                </button>
+                <button className="btn primary" onClick={() => setScopeExam(exam)}>
+                  Çöz
+                </button>
+                <button className="btn ghost danger" onClick={() => void removeExam(exam)}>
+                  Sil
+                </button>
+              </div>
+              {exam.warnings && (
+                <details className="warnings">
+                  <summary>{exam.warnings.length} uyarı</summary>
+                  <ul>
+                    {exam.warnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
-            {exam.warnings && (
-              <details className="warnings">
-                <summary>{exam.warnings.length} uyarı</summary>
-                <ul>
-                  {exam.warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </section>
 
       {finishedSessions.length > 0 && (
@@ -266,6 +258,53 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
           })}
         </section>
       )}
+      {scopeExam && (
+        <Modal title={scopeExam.name} onClose={() => setScopeExam(null)}>
+          <p className="modal-sub muted">Hangi kapsamda çözmek istersin?</p>
+          <div className="scope-list">
+            {(() => {
+              const subjects = subjectsOf(scopeExam)
+              const total = subjects.reduce((n, s) => n + s.questionCount, 0)
+              const go = (scope: { subjectFilter?: string; label: string }) => {
+                const ex = scopeExam
+                setScopeExam(null)
+                navigate({ name: 'setup', examId: ex.id, scope })
+              }
+              return (
+                <>
+                  {subjects.length > 1 && (
+                    <button className="scope-row all" onClick={() => go({ label: 'Tümü' })}>
+                      <span className="grow">
+                        <b>Tümü</b>
+                        <span className="muted"> · tüm dersler</span>
+                      </span>
+                      <span className="scope-count">{total} soru</span>
+                    </button>
+                  )}
+                  {subjects.map((s) => (
+                    <button
+                      key={s.name}
+                      className="scope-row"
+                      onClick={() => go({ subjectFilter: s.name, label: s.name })}
+                    >
+                      <span className="grow">
+                        {s.name}
+                        {!s.hasAnswerKey && <span className="tag warn">anahtar yok</span>}
+                      </span>
+                      <span className="scope-count">{s.questionCount} soru</span>
+                    </button>
+                  ))}
+                </>
+              )
+            })()}
+          </div>
+        </Modal>
+      )}
     </div>
   )
+}
+
+/** Eski (subjects'siz) sınavlar için sections'a düş. */
+function subjectsOf(exam: Exam): { name: string; questionCount: number; hasAnswerKey: boolean }[] {
+  return exam.subjects && exam.subjects.length ? exam.subjects : exam.sections
 }

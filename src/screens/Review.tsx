@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Route } from '../App'
-import { db, loadSectionQuestions, type Choice, type Question, type Session } from '../db'
+import { db, loadSessionQuestions, type Choice, type Question, type Session } from '../db'
 import BlobImg from '../components/BlobImg'
 
 const CHOICES: Choice[] = ['A', 'B', 'C', 'D', 'E']
@@ -25,8 +25,14 @@ export default function Review({
         navigate({ name: 'home' })
         return
       }
+      const exam = await db.exams.get(s.examId)
       setSession(s)
-      setQuestions(await loadSectionQuestions(s.examId, s.section))
+      if (exam) {
+        const filter = s.subjectFilter ?? (s.section && s.section !== 'Tümü' ? s.section : undefined)
+        setQuestions(await loadSessionQuestions(exam, filter))
+      } else {
+        setQuestions([])
+      }
     })()
   }, [sessionId, navigate])
 
@@ -43,7 +49,9 @@ export default function Review({
 
   if (!session || !questions) return null
   const answer = session.answers[index]
-  const q = questions.find((x) => x.number === answer?.number)
+  const q = answer?.qid
+    ? questions.find((x) => x.id === answer.qid)
+    : questions.find((x) => x.number === answer?.number)
   if (!answer || !q) return null
 
   const isCorrect = answer.choice && answer.correctChoice && answer.choice === answer.correctChoice
@@ -62,7 +70,8 @@ export default function Review({
           ← Sonuçlar
         </button>
         <h2 className="grow center-text">
-          Soru {answer.number} <span className="muted">/ {session.answers.length}</span>
+          {q.subject} · Soru {answer.number}{' '}
+          <span className="muted">({index + 1}/{session.answers.length})</span>
         </h2>
         <span className={`verdict ${verdict.cls}`}>{verdict.text}</span>
       </header>
