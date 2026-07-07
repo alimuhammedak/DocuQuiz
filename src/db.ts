@@ -28,9 +28,10 @@ export interface Question {
 
 export interface Answer {
   number: number
+  /** null = boş (görüldü ama işaretlenmedi) */
   choice: Choice | null
   timeSpentSec: number
-  /** cevap anahtarı varsa sorunun doğru şıkkı (cevap anında yazılır) */
+  /** cevap anahtarı varsa sorunun doğru şıkkı */
   correctChoice?: string
 }
 
@@ -45,6 +46,9 @@ export interface Session {
   finishedAt?: number
   elapsedSec: number
   currentIndex: number
+  /** görülen en ileri soru indexi; öğrenci 0..maxSeenIndex arasında gezinebilir */
+  maxSeenIndex?: number
+  /** görülen her soru için bir kayıt; seçim değiştirilebilir */
   answers: Answer[]
   status: 'active' | 'finished'
 }

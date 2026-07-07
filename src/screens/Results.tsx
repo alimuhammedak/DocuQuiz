@@ -69,6 +69,26 @@ export default function Results({ sessionId, navigate }: { sessionId: string; na
             </div>
           </div>
         )}
+        {sc.hasKey && sc.total > 0 && (
+          <>
+            <div className="dist-bar" role="img" aria-label={`${sc.correct} doğru, ${sc.wrong} yanlış, ${sc.blank} boş`}>
+              {sc.correct > 0 && <div className="dist-seg ok" style={{ flex: sc.correct }} />}
+              {sc.wrong > 0 && <div className="dist-seg bad" style={{ flex: sc.wrong }} />}
+              {sc.blank > 0 && <div className="dist-seg blank" style={{ flex: sc.blank }} />}
+            </div>
+            <div className="dist-legend">
+              <span>
+                <i className="dist-dot ok" /> Doğru <b>{sc.correct}</b>
+              </span>
+              <span>
+                <i className="dist-dot bad" /> Yanlış <b>{sc.wrong}</b>
+              </span>
+              <span>
+                <i className="dist-dot blank" /> Boş <b>{sc.blank}</b>
+              </span>
+            </div>
+          </>
+        )}
         <div className="score-meta muted">
           Toplam süre: <b>{formatDuration(session.elapsedSec)}</b> · Soru başına ort.{' '}
           <b>{formatDuration(avg)}</b>
