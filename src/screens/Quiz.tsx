@@ -194,18 +194,20 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
   return (
     <div className="quiz">
       <main className="quiz-main">
-        {q.contextImages && q.contextImages.length > 0 && (
-          <div className="context-box">
-            <div className="context-label">Bu soru için ortak bilgi / parça</div>
-            {q.contextImages.map((b, i) => (
-              <BlobImg key={i} blob={b} alt="Ortak bilgi" />
+        <div className="q-fade" key={session.currentIndex}>
+          {q.contextImages && q.contextImages.length > 0 && (
+            <div className="context-box">
+              <div className="context-label">Ortak bilgi / parça</div>
+              {q.contextImages.map((b, i) => (
+                <BlobImg key={i} blob={b} alt="Ortak bilgi" />
+              ))}
+            </div>
+          )}
+          <div className="q-card">
+            {q.images.map((b, i) => (
+              <BlobImg key={i} blob={b} alt={`Soru ${q.number}`} />
             ))}
           </div>
-        )}
-        <div className="q-card">
-          {q.images.map((b, i) => (
-            <BlobImg key={i} blob={b} alt={`Soru ${q.number}`} />
-          ))}
         </div>
         <div className="choices">
           <button
@@ -282,7 +284,7 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
           })}
         </div>
         <div className="side-note muted">Gördüğün sorular arasında gezinebilir, cevabını değiştirebilirsin.</div>
-        <button className="btn ghost danger" onClick={() => void endEarly()}>
+        <button className="btn danger-outline" onClick={() => void endEarly()}>
           Sınavı Bitir
         </button>
       </aside>

@@ -94,11 +94,10 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>
-          Docu<span className="accent">Quiz</span>
-        </h1>
+        <h1>ÖSYM kitapçığını sınava dönüştür</h1>
         <p className="subtitle">
-          ÖSYM PDF'ini yükle, soruları tek tek çöz. Sorular arasında gezin, cevabını değiştir — süre sağda.
+          PDF'ini yükle; sorular filigrandan arındırılıp tek tek karşına gelsin. Sorular arasında gezin,
+          cevabını değiştir — süre sağda seni bekler.
         </p>
       </header>
 
@@ -138,9 +137,22 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
           </div>
         ) : (
           <>
-            <div className="drop-icon">📄</div>
+            <div className="drop-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinejoin="round"
+                />
+                <path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                <path d="M12 11v6m0 0-2.4-2.4M12 17l2.4-2.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
             <div className="drop-title">PDF'i buraya bırak ya da tıkla</div>
-            <div className="drop-hint">İki sütunlu, çoktan seçmeli ÖSYM kitapçıkları desteklenir</div>
+            <div className="drop-hint">
+              İki sütunlu, çoktan seçmeli ÖSYM kitapçıkları desteklenir · filigran otomatik temizlenir
+            </div>
           </>
         )}
       </section>
@@ -151,7 +163,7 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
         <section className="block">
           <h2>Devam Eden Sınavlar</h2>
           {activeSessions.map((s) => (
-            <div key={s.id} className="card row">
+            <div key={s.id} className="card row resume-card">
               <div className="grow">
                 <div className="card-title">
                   {s.examName} — {s.section}
@@ -234,9 +246,10 @@ export default function Home({ navigate }: { navigate: (r: Route) => void }) {
                   <div className="muted">{formatDate(s.startedAt)}</div>
                 </div>
                 <div className="mini-score">
-                  <span className="ok">{sc.correct}D</span> <span className="bad">{sc.wrong}Y</span>{' '}
-                  <span className="muted">{sc.blank}B</span>
-                  {sc.hasKey && <span className="net"> · net {sc.net.toFixed(2)}</span>}
+                  <span className="pill ok">{sc.correct} D</span>
+                  <span className="pill bad">{sc.wrong} Y</span>
+                  <span className="pill blank">{sc.blank} B</span>
+                  {sc.hasKey && <span className="pill net">net {sc.net.toFixed(2)}</span>}
                 </div>
                 <div className="muted">{formatDuration(s.elapsedSec)}</div>
                 <button

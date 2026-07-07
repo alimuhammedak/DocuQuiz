@@ -103,14 +103,22 @@ export default function Setup({
         {mode === 'countdown' && (
           <div className="duration-row">
             <label htmlFor="minutes">Süre (dakika):</label>
-            <input
-              id="minutes"
-              type="number"
-              min={1}
-              max={600}
-              value={minutes}
-              onChange={(e) => setMinutes(parseInt(e.target.value || '1', 10))}
-            />
+            <div className="stepper">
+              <button type="button" aria-label="Azalt" onClick={() => setMinutes((m) => Math.max(1, m - 5))}>
+                −
+              </button>
+              <input
+                id="minutes"
+                type="number"
+                min={1}
+                max={600}
+                value={minutes}
+                onChange={(e) => setMinutes(Math.max(1, Math.min(600, parseInt(e.target.value || '1', 10))))}
+              />
+              <button type="button" aria-label="Artır" onClick={() => setMinutes((m) => Math.min(600, m + 5))}>
+                +
+              </button>
+            </div>
           </div>
         )}
 

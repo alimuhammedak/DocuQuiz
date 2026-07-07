@@ -30,6 +30,17 @@ export default function Review({
     })()
   }, [sessionId, navigate])
 
+  // ←/→ ile sorular arasında gezinme
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!session) return
+      if (e.key === 'ArrowLeft') setIndex((i) => Math.max(0, i - 1))
+      if (e.key === 'ArrowRight') setIndex((i) => Math.min(session.answers.length - 1, i + 1))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [session])
+
   if (!session || !questions) return null
   const answer = session.answers[index]
   const q = questions.find((x) => x.number === answer?.number)

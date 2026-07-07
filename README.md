@@ -70,6 +70,9 @@ npx tsx scripts/analyze.ts /yol/kitapcik.pdf
 
 ## Notlar
 
+- Soru görselleri PDF **yüklenirken** kırpılıp kaydedilir. Uygulamayı güncelledikten sonra
+  (örn. filigran temizleme gibi ayrıştırma iyileştirmelerinden yararlanmak için) daha önce
+  yüklenmiş sınavı silip PDF'i yeniden yüklemen gerekir.
 - Metin katmanı olmayan (taranmış görüntü) PDF'ler desteklenmez.
 - Veriler tarayıcıya bağlıdır: farklı tarayıcı/profil veya site verilerini temizlemek
   sınavları siler.
