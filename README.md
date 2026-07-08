@@ -9,9 +9,13 @@ değiştirebilirsin**.
 
 - **PDF'ten otomatik soru ayrıştırma** — iki sütunlu ÖSYM kitapçık düzeni tanınır; sorular
   şekil, tablo ve matematik ifadeleri birebir korunarak **görüntü olarak** kırpılır.
-- **Filigran (watermark) temizleme** — ÖSYM'nin yayınladığı kitapçıklardaki çapraz "ÖSYM"
-  filigranı, sayfalar render edilmeden önce PDF içerik akışından otomatik çıkarılır;
-  soru görselleri tertemiz gelir.
+- **Ders bazlı bölünme** — kitapçık, testlerin başındaki "Bu testte sırasıyla … (1-24) …"
+  bilgisinden **derslere** (Türk Dili ve Edebiyatı, Tarih, Coğrafya, Matematik, Fizik…)
+  ayrılır. Sınav kartına tıklayınca çıkan pencereden **Tümü** ya da tek bir dersi seçip
+  çözersin. (DGS gibi ders başlığı olmayan kitapçıklarda Sayısal/Sözel olarak kalır.)
+- **Filigran (watermark) temizleme** — ÖSYM kitapçıklarındaki çapraz "ÖSYM" ve "Bu soruların
+  telif hakları…" filigranları, sayfalar render edilmeden önce PDF içerik akışından otomatik
+  çıkarılır; soru görselleri tertemiz gelir (şekiller/figürler korunur).
 - **Serbest gezinme** — soru paletinden ya da ←/→ ile o ana kadar gördüğün sorular
   arasında geçiş yapabilir, işaretini değiştirebilir ya da temizleyebilirsin.
   Henüz görmediğin sorulara atlanamaz.
@@ -20,7 +24,8 @@ değiştirebilirsin**.
 - **Cevap anahtarı** — kitapçığın sonundaki anahtar otomatik okunur; sınav sonunda
   doğru / yanlış / boş ve **net** (4 yanlış = 1 doğru götürür) hesaplanır.
 - **Süre** — sağ panelde kronometre veya geri sayım (süre bitince sınav otomatik biter).
-- **Boş bırakma** — "Sonraki" ile işaretlemeden geçebilir, sonra dönüp cevaplayabilirsin.
+- **Boş bırakma** — "Boş Bırak" mevcut işareti kaldırıp sonraki soruya geçer; dilersen
+  dönüp sonra cevaplarsın.
 - **Yerel veritabanı** — her şey tarayıcının IndexedDB'sinde saklanır; sunucu yok,
   internet gerekmez, PDF bir kez ayrıştırılır. Yarım kalan sınava kaldığın yerden devam edebilirsin.
 - **İnceleme ekranı** — sınav bitince her sorunun görselini, kendi cevabını ve doğru cevabı görürsün.
@@ -44,7 +49,8 @@ npm run build   # çıktı: dist/ (statik dosyalar, herhangi bir sunucuda barın
 ## Kullanım
 
 1. Ana sayfadaki alana ÖSYM PDF'ini sürükle (veya tıklayıp seç).
-2. Ayrıştırma bitince bölümü seç (örn. SAYISAL / SÖZEL), süre modunu belirle, sınavı başlat.
+2. Sınav kartına tıkla; açılan pencereden kapsamı seç (Tümü ya da bir ders), süre modunu
+   belirle, sınavı başlat.
 3. Soruları çöz: şıkka tıkla → sonraki soru. Geri dönmek, atlamak ya da cevap değiştirmek
    için ←/→ oklarını veya sağdaki soru paletini kullan.
 4. Sınav bitince sonucu ve soru soru incelemeyi gör.

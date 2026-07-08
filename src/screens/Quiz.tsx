@@ -1,15 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Route } from '../App'
-import { db, loadSectionQuestions, type Answer, type Choice, type Question, type Session } from '../db'
+import { db, loadSessionQuestions, type Answer, type Choice, type Question, type Session } from '../db'
 import BlobImg from '../components/BlobImg'
 import { formatDuration } from '../format'
 
 const CHOICES: Choice[] = ['A', 'B', 'C', 'D', 'E']
 
-/** Görülen soru için kayıt ekler ya da mevcut kaydı yamayla günceller. */
-function upsertAnswer(answers: Answer[], number: number, patch: Partial<Answer>): Answer[] {
-  const idx = answers.findIndex((a) => a.number === number)
-  if (idx < 0) return [...answers, { number, choice: null, timeSpentSec: 0, ...patch }]
+/** Soruyu (qid) cevaplarda bulur ya da yeni kayıt açar; yamayla günceller. */
+function upsertByQid(answers: Answer[], q: Question, patch: Partial<Answer>): Answer[] {
+  const idx = answers.findIndex((a) => a.qid === q.id)
+  if (idx < 0) {
+    return [
+      ...answers,
+      {
+        qid: q.id,
+        section: q.section,
+        subject: q.subject,
+        number: q.number,
+        correctChoice: q.correct,
+        choice: null,
+        timeSpentSec: 0,
+        ...patch,
+      },
+    ]
+  }
   const copy = [...answers]
   copy[idx] = { ...copy[idx], ...patch }
   return copy
@@ -27,11 +41,15 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
   const advanceTimer = useRef<number | null>(null)
 
   useEffect(() => {
-    sessionRef.current = session
-  }, [session])
-  useEffect(() => {
     elapsedRef.current = elapsed
   }, [elapsed])
+
+  /** Tek noktadan durum + ref + kalıcılaştırma. */
+  const commit = useCallback((updated: Session) => {
+    sessionRef.current = updated
+    setSession(updated)
+    void db.sessions.put(updated)
+  }, [])
 
   // Yükleme (devam eden oturumlar dahil)
   useEffect(() => {
@@ -41,14 +59,19 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
         navigate(s ? { name: 'results', sessionId } : { name: 'home' })
         return
       }
-      const qs = await loadSectionQuestions(s.examId, s.section)
-      const maxSeen = Math.min(Math.max(s.maxSeenIndex ?? s.currentIndex, s.currentIndex), qs.length - 1)
-      // görülen her soru için kayıt garantile (eski oturumları da taşır)
-      let answers = s.answers
-      for (let i = 0; i <= maxSeen; i++) {
-        answers = upsertAnswer(answers, qs[i].number, { correctChoice: qs[i].correct })
+      const exam = await db.exams.get(s.examId)
+      if (!exam) {
+        navigate({ name: 'home' })
+        return
       }
+      // Eski oturumlarda subjectFilter yok; section etiketini filtre say (Tümü hariç).
+      const filter = s.subjectFilter ?? (s.section && s.section !== 'Tümü' ? s.section : undefined)
+      const qs = await loadSessionQuestions(exam, filter)
+      const maxSeen = Math.min(Math.max(s.maxSeenIndex ?? s.currentIndex, s.currentIndex), qs.length - 1)
+      let answers = s.answers
+      for (let i = 0; i <= maxSeen; i++) answers = upsertByQid(answers, qs[i], {})
       const loaded: Session = { ...s, answers, maxSeenIndex: maxSeen }
+      sessionRef.current = loaded
       setSession(loaded)
       setQuestions(qs)
       setElapsed(s.elapsedSec)
@@ -61,23 +84,15 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
       if (finishingRef.current) return
       finishingRef.current = true
       let answers = finalSession.answers
-      for (const q of allQuestions) {
-        answers = upsertAnswer(answers, q.number, { correctChoice: q.correct })
-      }
-      answers = [...answers].sort((a, b) => a.number - b.number)
-      const done: Session = {
-        ...finalSession,
-        answers,
-        status: 'finished',
-        finishedAt: Date.now(),
-      }
+      for (const q of allQuestions) answers = upsertByQid(answers, q, {})
+      const done: Session = { ...finalSession, answers, status: 'finished', finishedAt: Date.now() }
       await db.sessions.put(done)
       navigate({ name: 'results', sessionId: done.id })
     },
     [navigate],
   )
 
-  // Zamanlayıcı: saniyede bir ilerler, 5 sn'de bir kalıcılaştırılır
+  // Zamanlayıcı
   useEffect(() => {
     if (!session || !questions) return
     const timer = setInterval(() => {
@@ -95,76 +110,72 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, questions, finish])
 
-  /** Görülen sorular arasında geçiş; bir sonraki (yeni) soruya ilerlemek de serbest. */
+  /** Görülen sorular arasında geçiş (bir sonraki yeni soru da serbest). */
   const goTo = useCallback(
     (index: number) => {
       const s = sessionRef.current
       if (!s || !questions || finishingRef.current) return
       if (index < 0 || index >= questions.length || index === s.currentIndex) return
       const maxSeen = Math.max(s.maxSeenIndex ?? s.currentIndex, s.currentIndex)
-      if (index > maxSeen + 1) return // görülmemiş sorulara atlanamaz
+      if (index > maxSeen + 1) return
 
-      // mevcut soruda geçirilen süreyi işle
       const curQ = questions[s.currentIndex]
       const dwell = Math.round((Date.now() - shownAtRef.current) / 1000)
-      let answers = upsertAnswer(s.answers, curQ.number, { correctChoice: curQ.correct })
-      answers = answers.map((a) =>
-        a.number === curQ.number ? { ...a, timeSpentSec: a.timeSpentSec + dwell } : a,
-      )
-      // hedef soruyu görülmüş say
-      const target = questions[index]
-      answers = upsertAnswer(answers, target.number, { correctChoice: target.correct })
+      let answers = upsertByQid(s.answers, curQ, {})
+      answers = answers.map((a) => (a.qid === curQ.id ? { ...a, timeSpentSec: a.timeSpentSec + dwell } : a))
+      answers = upsertByQid(answers, questions[index], {})
 
-      const updated: Session = {
+      commit({
         ...s,
         answers,
         currentIndex: index,
         maxSeenIndex: Math.max(maxSeen, index),
         elapsedSec: elapsedRef.current,
-      }
-      setSession(updated)
-      void db.sessions.put(updated)
+      })
       shownAtRef.current = Date.now()
       window.scrollTo({ top: 0 })
     },
-    [questions],
+    [questions, commit],
   )
 
-  /** Şık seç ya da temizle (null). Seçim her zaman değiştirilebilir. */
-  const choose = useCallback(
+  /** Şık seç / temizle. Seçim her zaman değiştirilebilir. */
+  const setChoice = useCallback(
     (choice: Choice | null) => {
       const s = sessionRef.current
       if (!s || !questions || finishingRef.current) return
       const q = questions[s.currentIndex]
-      const answers = upsertAnswer(s.answers, q.number, { choice, correctChoice: q.correct })
-      const updated: Session = { ...s, answers, elapsedSec: elapsedRef.current }
-      setSession(updated)
-      void db.sessions.put(updated)
-      if (choice) {
-        // kısa vurgu, sonra otomatik ileri ("şıkladıkça ileri")
-        setFlash(choice)
-        if (advanceTimer.current) window.clearTimeout(advanceTimer.current)
-        advanceTimer.current = window.setTimeout(() => {
-          setFlash(null)
-          const cur = sessionRef.current
-          if (cur && cur.currentIndex < questions.length - 1) goTo(cur.currentIndex + 1)
-        }, 320)
-      }
+      commit({ ...s, answers: upsertByQid(s.answers, q, { choice }), elapsedSec: elapsedRef.current })
     },
-    [questions, goTo],
+    [questions, commit],
   )
+
+  /** Şık seçince: kısa vurgu → otomatik sonraki soru. */
+  const choose = useCallback(
+    (choice: Choice) => {
+      setChoice(choice)
+      setFlash(choice)
+      if (advanceTimer.current) window.clearTimeout(advanceTimer.current)
+      advanceTimer.current = window.setTimeout(() => {
+        setFlash(null)
+        const cur = sessionRef.current
+        if (cur && questions && cur.currentIndex < questions.length - 1) goTo(cur.currentIndex + 1)
+      }, 320)
+    },
+    [setChoice, goTo, questions],
+  )
+
+  /** Boş Bırak: mevcut seçimi kaldır ve sonraki soruya geç. */
+  const leaveBlank = useCallback(() => {
+    setChoice(null)
+    const cur = sessionRef.current
+    if (cur && questions && cur.currentIndex < questions.length - 1) goTo(cur.currentIndex + 1)
+  }, [setChoice, goTo, questions])
 
   // Klavye: A–E / 1–5 şık, ←/→ gezinme
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') {
-        goTo((sessionRef.current?.currentIndex ?? 0) - 1)
-        return
-      }
-      if (e.key === 'ArrowRight') {
-        goTo((sessionRef.current?.currentIndex ?? 0) + 1)
-        return
-      }
+      if (e.key === 'ArrowLeft') return goTo((sessionRef.current?.currentIndex ?? 0) - 1)
+      if (e.key === 'ArrowRight') return goTo((sessionRef.current?.currentIndex ?? 0) + 1)
       const k = e.key.toUpperCase()
       const byLetter = CHOICES.indexOf(k as Choice)
       const byDigit = ['1', '2', '3', '4', '5'].indexOf(e.key)
@@ -179,16 +190,45 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
 
   const q = questions[session.currentIndex]
   if (!q) return null
-  const current = session.answers.find((a) => a.number === q.number)
+  const current = session.answers.find((a) => a.qid === q.id)
   const maxSeen = Math.max(session.maxSeenIndex ?? session.currentIndex, session.currentIndex)
-
   const remaining = session.durationSec ? session.durationSec - elapsed : null
   const answered = session.answers.filter((a) => a.choice).length
   const blank = maxSeen + 1 - answered
 
+  // Palet: birden çok ders varsa gruplu göster
+  const palGroups: { subject: string; idx: number[] }[] = []
+  questions.forEach((qq, i) => {
+    const last = palGroups[palGroups.length - 1]
+    if (last && last.subject === qq.subject) last.idx.push(i)
+    else palGroups.push({ subject: qq.subject, idx: [i] })
+  })
+  const grouped = palGroups.length > 1
+
   const endEarly = async () => {
     if (!window.confirm('Sınavı bitirmek istediğine emin misin? Cevaplanmamış sorular boş sayılacak.')) return
     await finish({ ...session, elapsedSec: elapsed }, questions)
+  }
+
+  const palCell = (i: number) => {
+    const qq = questions[i]
+    const a = session.answers.find((x) => x.qid === qq.id)
+    const cls = [
+      'pal-cell',
+      i === session.currentIndex ? 'current' : '',
+      a?.choice ? 'answered' : i <= maxSeen ? 'seen' : '',
+    ].join(' ')
+    return (
+      <button
+        key={qq.id}
+        className={cls}
+        disabled={i > maxSeen + 1}
+        title={i > maxSeen + 1 ? 'Henüz görülmedi' : `${qq.subject} ${qq.number}${a?.choice ? ` — ${a.choice}` : ''}`}
+        onClick={() => goTo(i)}
+      >
+        {qq.number}
+      </button>
+    )
   }
 
   return (
@@ -210,11 +250,7 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
           </div>
         </div>
         <div className="choices">
-          <button
-            className="btn ghost nav-btn"
-            disabled={session.currentIndex === 0}
-            onClick={() => goTo(session.currentIndex - 1)}
-          >
+          <button className="btn ghost nav-btn" disabled={session.currentIndex === 0} onClick={() => goTo(session.currentIndex - 1)}>
             ← Önceki
           </button>
           {CHOICES.map((c) => (
@@ -226,8 +262,8 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
               {c}
             </button>
           ))}
-          <button className="btn ghost clear-btn" disabled={!current?.choice} onClick={() => choose(null)}>
-            Temizle
+          <button className="btn ghost clear-btn" onClick={leaveBlank}>
+            Boş Bırak
           </button>
           <button
             className="btn ghost nav-btn"
@@ -247,12 +283,13 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
           <div className="timer-label">{remaining !== null ? 'Kalan Süre' : 'Geçen Süre'}</div>
           <div className="timer-value">{formatDuration(remaining !== null ? remaining : elapsed)}</div>
         </div>
+        <div className="side-scope muted">{session.section}</div>
         <div className="side-stat">
           <div className="side-num">
             {session.currentIndex + 1}
             <span className="muted">/{questions.length}</span>
           </div>
-          <div className="side-label">Soru</div>
+          <div className="side-label">Soru · {q.subject}</div>
         </div>
         <div className="side-counts">
           <span>
@@ -262,27 +299,18 @@ export default function Quiz({ sessionId, navigate }: { sessionId: string; navig
             Boş: <b>{blank}</b>
           </span>
         </div>
-        <div className="palette">
-          {questions.map((qq, i) => {
-            const a = session.answers.find((x) => x.number === qq.number)
-            const cls = [
-              'pal-cell',
-              i === session.currentIndex ? 'current' : '',
-              a?.choice ? 'answered' : i <= maxSeen ? 'seen' : '',
-            ].join(' ')
-            return (
-              <button
-                key={qq.number}
-                className={cls}
-                disabled={i > maxSeen + 1}
-                title={i > maxSeen + 1 ? 'Henüz görülmedi' : `Soru ${qq.number}${a?.choice ? ` — ${a.choice}` : ''}`}
-                onClick={() => goTo(i)}
-              >
-                {qq.number}
-              </button>
-            )
-          })}
-        </div>
+        {grouped ? (
+          <div className="palette-groups">
+            {palGroups.map((g) => (
+              <div key={g.subject} className="pal-group">
+                <div className="pal-group-head">{g.subject}</div>
+                <div className="palette">{g.idx.map(palCell)}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="palette">{questions.map((_, i) => palCell(i))}</div>
+        )}
         <div className="side-note muted">Gördüğün sorular arasında gezinebilir, cevabını değiştirebilirsin.</div>
         <button className="btn danger-outline" onClick={() => void endEarly()}>
           Sınavı Bitir

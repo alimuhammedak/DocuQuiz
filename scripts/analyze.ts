@@ -19,9 +19,13 @@ const doc = await getDocument({ data: bytes }).promise
 const pages = await extractPageTexts(doc)
 const det = detect(pages)
 
-console.log('--- BÖLÜMLER ---')
+console.log('--- TESTLER (numara alanı) ---')
 for (const s of det.sections) {
   console.log(`  "${s.name}"  sayfa ${s.firstPage + 1}-${s.lastPage + 1}  soru: ${s.questionCount}`)
+}
+console.log('--- DERSLER (kullanıcı bölünmesi) ---')
+for (const s of det.subjects) {
+  console.log(`  "${s.name}"  ${s.questionCount} soru  ${s.hasAnswerKey ? 'anahtar ✓' : 'anahtar yok'}`)
 }
 console.log('--- GRUPLAR ---')
 for (const g of det.groups) {

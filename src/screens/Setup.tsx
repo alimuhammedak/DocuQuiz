@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react'
-import type { Route } from '../App'
+import type { Route, Scope } from '../App'
 import { db, type Exam, type Session } from '../db'
 
 export default function Setup({
   examId,
-  initialSection,
+  scope,
   navigate,
 }: {
   examId: string
-  initialSection?: string
+  scope: Scope
   navigate: (r: Route) => void
 }) {
   const [exam, setExam] = useState<Exam | null>(null)
-  const [section, setSection] = useState<string>('')
   const [mode, setMode] = useState<'stopwatch' | 'countdown'>('stopwatch')
   const [minutes, setMinutes] = useState(60)
 
@@ -23,24 +22,27 @@ export default function Setup({
         return
       }
       setExam(e)
-      const first = e.sections.find((s) => s.name === initialSection) ?? e.sections[0]
-      if (first) {
-        setSection(first.name)
-        setMinutes(defaultMinutes(first.questionCount))
-      }
+      const subjects = e.subjects?.length ? e.subjects : e.sections
+      const count = scope.subjectFilter
+        ? subjects.find((s) => s.name === scope.subjectFilter)?.questionCount ?? 0
+        : subjects.reduce((n, s) => n + s.questionCount, 0)
+      setMinutes(defaultMinutes(count))
     })
-  }, [examId, initialSection, navigate])
+  }, [examId, scope.subjectFilter, navigate])
 
   if (!exam) return null
-  const selected = exam.sections.find((s) => s.name === section)
+  const subjects = exam.subjects?.length ? exam.subjects : exam.sections
+  const count = scope.subjectFilter
+    ? subjects.find((s) => s.name === scope.subjectFilter)?.questionCount ?? 0
+    : subjects.reduce((n, s) => n + s.questionCount, 0)
 
   const start = async () => {
-    if (!selected) return
     const session: Session = {
       id: crypto.randomUUID(),
       examId: exam.id,
       examName: exam.name,
-      section: selected.name,
+      section: scope.label,
+      subjectFilter: scope.subjectFilter,
       mode,
       durationSec: mode === 'countdown' ? Math.max(1, minutes) * 60 : undefined,
       startedAt: Date.now(),
@@ -64,25 +66,10 @@ export default function Setup({
       </header>
 
       <div className="card setup-card">
-        <h3>Bölüm</h3>
-        <div className="option-list">
-          {exam.sections.map((s) => (
-            <label key={s.name} className={`option ${section === s.name ? 'selected' : ''}`}>
-              <input
-                type="radio"
-                name="section"
-                checked={section === s.name}
-                onChange={() => {
-                  setSection(s.name)
-                  setMinutes(defaultMinutes(s.questionCount))
-                }}
-              />
-              <span className="grow">
-                {s.name} <span className="muted">· {s.questionCount} soru</span>
-              </span>
-              {!s.hasAnswerKey && <span className="tag warn">cevap anahtarı yok</span>}
-            </label>
-          ))}
+        <h3>Kapsam</h3>
+        <div className="scope-banner">
+          <span className="scope-banner-label">{scope.label}</span>
+          <span className="muted"> · {count} soru</span>
         </div>
 
         <h3>Süre</h3>
@@ -128,7 +115,7 @@ export default function Setup({
           "Sonraki" ile geçtiğin sorular boş kalır.
         </div>
 
-        <button className="btn primary big" disabled={!selected} onClick={() => void start()}>
+        <button className="btn primary big" disabled={count === 0} onClick={() => void start()}>
           Sınavı Başlat
         </button>
       </div>

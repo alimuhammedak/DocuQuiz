@@ -37,7 +37,10 @@ export interface DetectedGroup {
 }
 
 export interface DetectedQuestion {
+  /** numara alanı = test adı (qid'in parçası) */
   section: string
+  /** ders/alan adı (kullanıcıya gösterilen bölünme) */
+  subject: string
   number: number
   regions: Region[]
   groupId?: string
@@ -50,11 +53,21 @@ export interface SectionInfo {
   questionCount: number
 }
 
+/** Kullanıcıya gösterilen ders/alan (ör. Matematik, Türkçe, Tarih-1). */
+export interface SubjectInfo {
+  name: string
+  questionCount: number
+  hasAnswerKey: boolean
+}
+
 export interface Detection {
+  /** iç numaralandırma birimleri (testler) */
   sections: SectionInfo[]
+  /** kullanıcıya gösterilen dersler */
+  subjects: SubjectInfo[]
   questions: DetectedQuestion[]
   groups: DetectedGroup[]
-  /** bölüm adı -> soru no -> doğru şık */
+  /** test adı -> soru no -> doğru şık */
   answerKey: Record<string, Record<number, string>>
   warnings: string[]
 }

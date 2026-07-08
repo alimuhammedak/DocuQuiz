@@ -671,12 +671,15 @@ h3 {
   border-radius: var(--radius);
   padding: 18px;
   margin-bottom: 14px;
-  overflow-x: auto;
+  overflow: auto;
   box-shadow: var(--shadow-sm);
+  display: flex;
+  justify-content: center;
 }
 .context-box {
   border-left: 3px solid var(--accent);
   background: #fbfcff;
+  flex-direction: column;
 }
 .context-label {
   font-size: 11.5px;
@@ -688,10 +691,17 @@ h3 {
 }
 .blob-img {
   display: block;
-  width: 100%;
-  max-width: 760px;
+  max-width: 100%;
+  /* Uzun sorular dikeyde ölçeklenip kaydırmasız ekrana sığar. */
+  max-height: calc(100dvh - 250px);
+  width: auto;
   height: auto;
+  object-fit: contain;
   margin: 0 auto;
+}
+/* Ortak bilgili sorularda üstteki parça için biraz daha az yükseklik. */
+.context-box .blob-img {
+  max-height: calc(50dvh - 60px);
 }
 
 .q-fade {
@@ -973,6 +983,143 @@ button.choice-btn:hover {
   margin: 24px auto 0;
 }
 
+/* ---------- sınav kartı (tek kart) ---------- */
+.exam-open {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 2px 0;
+}
+.exam-open:hover .card-title {
+  color: var(--accent);
+}
+
+/* ---------- modal + kapsam seçimi ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 24, 40, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+  animation: fadein 0.12s ease;
+}
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  width: 100%;
+  max-width: 440px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--divider);
+}
+.modal-head h2 {
+  margin: 0;
+  flex: 1;
+}
+.modal-x {
+  padding: 4px 8px;
+}
+.modal-body {
+  padding: 14px 18px 18px;
+  overflow-y: auto;
+}
+.modal-sub {
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.scope-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scope-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 12px 14px;
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s;
+}
+.scope-row:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.scope-row.all {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.scope-count {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- setup kapsam bandı ---------- */
+.scope-banner {
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+}
+.scope-banner-label {
+  font-weight: 650;
+}
+
+/* ---------- quiz kenar çubuğu ek ---------- */
+.side-scope {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  border-bottom: 1px solid var(--divider);
+  padding-bottom: 10px;
+  margin-top: -4px;
+}
+.palette-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.pal-group-head {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 5px;
+}
+.palette-groups .palette {
+  max-height: none;
+  overflow: visible;
+}
+
 @media (max-width: 760px) {
   .quiz {
     flex-direction: column-reverse;
@@ -983,6 +1130,9 @@ button.choice-btn:hover {
   }
   .palette {
     max-height: 130px;
+  }
+  .palette-groups {
+    max-height: 200px;
   }
   .score-grid {
     flex-wrap: wrap;
@@ -995,5 +1145,8 @@ button.choice-btn:hover {
   }
   .privacy-pill {
     display: none;
+  }
+  .blob-img {
+    max-height: none;
   }
 }

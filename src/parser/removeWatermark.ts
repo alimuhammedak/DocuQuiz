@@ -205,7 +205,9 @@ export function stripWatermarkBlocks(src: string): { cleaned: string; count: num
   const evalShowOp = () => {
     const scale = tm ? Math.hypot(tm[0], tm[1]) : 1
     const eff = tfSize * (scale || 1)
-    if ((isRotated(tm) && eff >= 20) || eff >= 60) btSuspicious = true
+    // Döndürülmüş metin ≥14pt (ör. 45° "ÖSYM" ve "Bu soruların telif hakları…"
+    // filigran satırı 16pt) ya da herhangi bir ≥60pt dev metin → filigran.
+    if ((isRotated(tm) && eff >= 14) || eff >= 60) btSuspicious = true
   }
 
   while (i < n) {
@@ -320,8 +322,9 @@ export function stripWatermarkBlocks(src: string): { cleaned: string; count: num
       case 'cm':
         if (nums.length >= 6 && qStack.length) {
           const m = nums.slice(-6)
-          const scale = Math.hypot(m[0], m[1])
-          if (isRotated(m) && scale >= 2) qStack[qStack.length - 1].rotCm = true
+          // Döndürülmüş XObject çizimi (ör. 45° filigran sarmalayıcısı) =
+          // filigran. Soru içeriği/figürleri döndürülmüş Do ile çizilmez.
+          if (isRotated(m)) qStack[qStack.length - 1].rotCm = true
         }
         break
       case 'gs':
@@ -329,7 +332,7 @@ export function stripWatermarkBlocks(src: string): { cleaned: string; count: num
         break
       case 'Do': {
         const top = qStack[qStack.length - 1]
-        if (top && top.rotCm && top.gs) top.remove = true
+        if (top && top.rotCm) top.remove = true
         break
       }
       case 'Q': {
