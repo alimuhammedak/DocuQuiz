@@ -166,6 +166,21 @@ function layoutPage(page: PageText, isSectionStart: boolean, bankTopic?: string)
       }
     }
   }
+  // Soru bankalarında üst bant iki sütunda farklı yükseklikte olabilir (solda QR
+  // kutusu, sağda daha yüksekte başlayan grup talimatı). Sayfa-geneli topBound bu
+  // grubu eleyebilir; en üstteki gerçek işaretçinin/grubun hemen üstüne çekilir.
+  if (bankTopic) {
+    let minMarker = Infinity
+    for (const col of cols) {
+      for (const line of col) {
+        if (GROUP_RE.test(line.text) || /^\d{1,3}\.(?=\s|$)/.test(line.text.trim())) {
+          if (line.top < minMarker) minMarker = line.top
+        }
+      }
+    }
+    if (minMarker < Infinity && minMarker - 4 < topBound) topBound = minMarker - 4
+  }
+
   // "Diğer sayfaya geçiniz" yoksa (soru bankaları): en alttaki satır yalnızca
   // sayfa numarasıysa onun üstü, değilse sayfanın ~%96,5'i içerik alanıdır.
   if (!sawFooter) {
