@@ -7,8 +7,12 @@ değiştirebilirsin**.
 
 ## Özellikler
 
-- **PDF'ten otomatik soru ayrıştırma** — iki sütunlu ÖSYM kitapçık düzeni tanınır; sorular
-  şekil, tablo ve matematik ifadeleri birebir korunarak **görüntü olarak** kırpılır.
+- **PDF'ten otomatik soru ayrıştırma** — iki düzen desteklenir; sorular şekil, tablo ve
+  matematik ifadeleri birebir korunarak **görüntü olarak** kırpılır:
+  - **ÖSYM kitapçıkları** (DGS, YKS/AYT, KPSS…): bölüm/test sayfaları + sondaki cevap anahtarı.
+  - **Yayınevi soru bankaları** ("KONU ADI · Test - N" düzeni): konular ders olarak ayrılır,
+    cevaplar kitabın sonundaki **ÇÖZÜMLER** sayfalarındaki "Doğru cevap X seçeneğidir"
+    ifadelerinden çıkarılır (çözüm sayfası yoksa sınav puansız çözülür).
 - **Ders bazlı bölünme** — kitapçık, testlerin başındaki "Bu testte sırasıyla … (1-24) …"
   bilgisinden **derslere** (Türk Dili ve Edebiyatı, Tarih, Coğrafya, Matematik, Fizik…)
   ayrılır. Sınav kartına tıklayınca çıkan pencereden **Tümü** ya da tek bir dersi seçip

@@ -8,7 +8,7 @@ import type {
   SubjectInfo,
   TextItem,
 } from './types'
-import { parseAnswerKey } from './answerKey'
+import { parseAnswerKey, parseBankAnswers } from './answerKey'
 
 // ÖSYM kitapçıkları iki sütunlu dizilir; soru numaraları ("1.", "2." …)
 // sütunun sol kenarına hizalıdır. Tespit stratejisi:
@@ -20,7 +20,8 @@ import { parseAnswerKey } from './answerKey'
 //  4. İki sınır arasındaki bölge(ler) o sorunun/grubun kırpma alanıdır.
 
 const QNUM_RE = /^(\d{1,3})\.$/
-const GROUP_RE = /^(\d{1,3})\s*\.?\s*[-–]\s*(\d{1,3})\s*\.?\s*sorular/i
+// "38. - 39. soruları", "1 ve 2. soruları", "3 – 5. soruları", "1 − 4. ..." (U+2212)
+const GROUP_RE = /^(\d{1,3})\s*\.?\s*(?:[-–−]|ve|ile)\s*(\d{1,3})\s*\.?\s*sorular/i
 // Test/bölüm başlangıç sayfası işaretçisi (sayfa sınıflandırma için).
 const SECTION_MARK_RE = /BU BÖLÜMDE|CEVAPLAYACAĞINIZ|Bu testte|SORU (SAYISI|VARDIR)/i
 // Test-başı sayfada talimat bloğunu (ve içindeki sahte "1."/"2." kurallarını)
@@ -29,6 +30,44 @@ const INSTR_LINE_RE =
   /BU BÖLÜMDE|CEVAPLAYACAĞINIZ|Bu testte|SORU (SAYISI|VARDIR)|Cevaplarınızı|işaretleyiniz|alanlar[ıi]na ait/i
 const END_RE = /TEST BİTTİ|SINAV BİTTİ|BÖLÜM BİTTİ|CEVAPLARINIZI KONTROL/
 const FOOTER_RE = /Diğer sayfaya geçiniz/i
+
+// Yayınevi soru bankası düzeni: "KONU ADI  (Çözümlü) Test - N" başlıklı sayfalar.
+const BANK_TEST_RE =
+  /([A-ZÇĞİÖŞÜÂÎÛ0-9\-'’ ]{3,60}?)\s*(?:Çözümlü\s+)?Test\s*[-–−]\s*(\d{1,3})\b/u
+
+export interface BankTestInfo {
+  topic: string
+  testNo: number
+  isSolutions: boolean
+}
+
+/** ÇÖZÜMLER sayfası mı? (Test başlığı olmasa bile) */
+export function isSolutionsPage(page: PageText): boolean {
+  // Not: \b Türkçe harflerle (Ç) çalışmaz; düz arama kullanılır.
+  const flat = joinPageText(page).replace(/\s+/g, ' ')
+  return flat.includes('ÇÖZÜMLER') || (flat.match(/Çözüm\s*:/g) ?? []).length >= 2
+}
+
+/** Sayfa bir soru bankası test/çözüm sayfası mı? */
+export function bankTestOf(page: PageText): BankTestInfo | null {
+  const flat = joinPageText(page).replace(/\s+/g, ' ')
+  const m = BANK_TEST_RE.exec(flat)
+  if (!m) return null
+  let topic = m[1]
+    .replace(/^\d+\s*/, '') // baştaki sayfa numarası
+    .replace(/^BÖLÜM\s*\d+\s*/iu, '')
+    .replace(/^[A-ZÇĞİÖŞÜ]+\s+BÖLÜMÜ?\s+/u, '') // "SÖZEL BÖLÜM" gibi üst kuşak adı
+    .replace(/ÇÖZÜMLER/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  // üst bantta konu adı iki kez geçebiliyor; birebir tekrarı sadeleştir
+  const half = Math.floor(topic.length / 2)
+  if (topic.length > 8 && topic.slice(0, half).trim() === topic.slice(half).trim()) {
+    topic = topic.slice(0, half).trim()
+  }
+  if (!topic) return null
+  return { topic, testNo: parseInt(m[2], 10), isSolutions: isSolutionsPage(page) }
+}
 
 interface Line {
   top: number
@@ -90,9 +129,9 @@ interface PageLayout {
   lines: [Line[], Line[]]
 }
 
-function layoutPage(page: PageText, isSectionStart: boolean): PageLayout {
+function layoutPage(page: PageText, isSectionStart: boolean, bankTopic?: string): PageLayout {
   const H = page.height
-  let topBound = H * 0.08
+  let topBound = H * (bankTopic ? 0.05 : 0.08)
   let footBound = H * 0.87
   const cols: [Line[], Line[]] = [[], []]
   const colItems: [TextItem[], TextItem[]] = [[], []]
@@ -100,13 +139,40 @@ function layoutPage(page: PageText, isSectionStart: boolean): PageLayout {
   cols[0] = buildLines(colItems[0])
   cols[1] = buildLines(colItems[1])
 
+  let sawFooter = false
+  let bottomLine: Line | null = null
   for (const col of cols) {
     for (const line of col) {
-      if (FOOTER_RE.test(line.text)) footBound = Math.min(footBound, line.top - 4)
+      if (FOOTER_RE.test(line.text)) {
+        footBound = Math.min(footBound, line.top - 4)
+        sawFooter = true
+      }
+      if (!bottomLine || line.top > bottomLine.top) bottomLine = line
       if (isSectionStart && line.top < H * 0.4 && INSTR_LINE_RE.test(line.text)) {
         topBound = Math.max(topBound, line.bottom + 8)
       }
+      // Soru bankası: üst banttaki konu adı / "BÖLÜM N" / sayfa no satırları
+      // soru alanı dışıdır.
+      if (bankTopic && line.top < H * 0.18) {
+        const t = line.text.trim()
+        if (
+          /^BÖLÜM\s*\d+$/i.test(t) ||
+          /^\d{1,4}$/.test(t) ||
+          /karekodu okutunuz/i.test(t) ||
+          (t.length > 3 && (t === bankTopic || bankTopic.includes(t) || t.includes(bankTopic)))
+        ) {
+          topBound = Math.max(topBound, line.bottom + 8)
+        }
+      }
     }
+  }
+  // "Diğer sayfaya geçiniz" yoksa (soru bankaları): en alttaki satır yalnızca
+  // sayfa numarasıysa onun üstü, değilse sayfanın ~%96,5'i içerik alanıdır.
+  if (!sawFooter) {
+    footBound =
+      bottomLine && /^\d{1,4}$/.test(bottomLine.text.trim())
+        ? Math.min(H * 0.965, bottomLine.top - 4)
+        : H * 0.965
   }
   return { topBound, footBound, lines: cols }
 }
@@ -170,34 +236,82 @@ const EDGE_TOL = 12
 export function detect(pages: PageText[]): Detection {
   const warnings: string[] = []
 
-  // 1) Sayfa sınıflandırma
+  // 1) Sayfa sınıflandırma — önce ÖSYM işaretleri
   const sectionStartPages: number[] = []
   const keyPages: number[] = []
   for (const p of pages) {
     const text = joinPageText(p)
     if (SECTION_MARK_RE.test(text) && /BÖLÜM|TEST/i.test(text)) sectionStartPages.push(p.pageIndex)
   }
-  for (const p of pages) {
-    if (sectionStartPages.length && p.pageIndex > sectionStartPages[0] && isAnswerKeyPage(p)) {
-      keyPages.push(p.pageIndex)
+
+  // Yayınevi soru bankası modu: ÖSYM işareti yok ama "KONU Test - N" sayfaları var
+  const bankInfos = pages.map((p) => bankTestOf(p))
+  const solutionPages = pages.filter((p) => isSolutionsPage(p))
+  const bankMode =
+    sectionStartPages.length === 0 && bankInfos.some((b) => b && !b.isSolutions)
+
+  let sections: SectionInfo[]
+  /** bölüm adı -> ders (konu) adı; bank modunda dolu */
+  const bankTopicOf = new Map<string, string>()
+
+  if (bankMode) {
+    // Section = Test-başlangıç sayfası + aynı konuyu taşıyan ardışık devam sayfaları
+    sections = []
+    let cur: { topic: string; testNo: number; sec: SectionInfo } | null = null
+    let orphanPages = 0
+    for (const p of pages) {
+      const info = bankInfos[p.pageIndex]
+      if (isSolutionsPage(p)) {
+        cur = null
+        continue
+      }
+      if (info) {
+        if (cur && cur.topic === info.topic && cur.testNo === info.testNo) {
+          cur.sec.lastPage = p.pageIndex
+        } else {
+          const sec: SectionInfo = {
+            name: `${info.topic} · Test ${info.testNo}`,
+            firstPage: p.pageIndex,
+            lastPage: p.pageIndex,
+            questionCount: 0,
+          }
+          sections.push(sec)
+          bankTopicOf.set(sec.name, info.topic)
+          cur = { topic: info.topic, testNo: info.testNo, sec }
+        }
+      } else if (cur && joinPageText(p).includes(cur.topic)) {
+        cur.sec.lastPage = p.pageIndex
+      } else {
+        // test başlığı olmayan sayfa: kapak/ayraç ya da yetim devam sayfası
+        if (cur === null && /[A-E]\)/.test(joinPageText(p))) orphanPages++
+        cur = null
+      }
     }
-  }
-  if (sectionStartPages.length === 0) {
-    // Bölüm başlığı yoksa tüm belgeyi tek bölüm say (kapak hariç: soru içeren ilk sayfadan itibaren)
-    warnings.push('Bölüm başlığı bulunamadı; belge tek bölüm olarak işlendi.')
-    sectionStartPages.push(0)
-  }
+    if (orphanPages > 0) {
+      warnings.push(
+        `${orphanPages} sayfa, ait olduğu test başlığı belgede bulunmadığı için atlandı (kitabın tamamı yerine örnek/kısmi PDF yüklenmiş olabilir).`,
+      )
+    }
+  } else {
+    if (sectionStartPages.length === 0) {
+      // Bölüm başlığı yoksa tüm belgeyi tek bölüm say
+      warnings.push('Bölüm başlığı bulunamadı; belge tek bölüm olarak işlendi.')
+      sectionStartPages.push(0)
+    }
+    for (const p of pages) {
+      if (p.pageIndex > sectionStartPages[0] && isAnswerKeyPage(p)) keyPages.push(p.pageIndex)
+    }
+    const firstKeyPage = keyPages.length ? Math.min(...keyPages) : pages.length
 
-  const firstKeyPage = keyPages.length ? Math.min(...keyPages) : pages.length
-
-  // 2) Test (numara alanı) aralıkları ve adları
-  const sections: SectionInfo[] = sectionStartPages.map((start, i) => {
-    const end = Math.min(
-      (sectionStartPages[i + 1] ?? pages.length) - 1,
-      firstKeyPage - 1,
-    )
-    return { name: extractSectionName(pages[start], i), firstPage: start, lastPage: end, questionCount: 0 }
-  })
+    // 2) Test (numara alanı) aralıkları ve adları
+    sections = sectionStartPages.map((start, i) => {
+      const end = Math.min(
+        (sectionStartPages[i + 1] ?? pages.length) - 1,
+        firstKeyPage - 1,
+      )
+      return { name: extractSectionName(pages[start], i), firstPage: start, lastPage: end, questionCount: 0 }
+    })
+  }
   // Test adlarını benzersizleştir (qid çakışmasın)
   const nameCount = new Map<string, number>()
   for (const s of sections) {
@@ -211,15 +325,18 @@ export function detect(pages: PageText[]): Detection {
   const groups: DetectedGroup[] = []
 
   for (const section of sections) {
+    const bankTopic = bankTopicOf.get(section.name)
     // Bu testin ders aralıkları (kullanıcıya gösterilecek bölünme)
-    const secSub = parseSubjects(joinPageText(pages[section.firstPage]))
+    const secSub = bankTopic
+      ? { subAreas: [], singleName: bankTopic }
+      : parseSubjects(joinPageText(pages[section.firstPage]))
     const subjectFor = (num: number): string => {
       for (const sa of secSub.subAreas) if (num >= sa.start && num <= sa.end) return sa.name
       return secSub.singleName || section.name
     }
     const layouts = new Map<number, PageLayout>()
     for (let pi = section.firstPage; pi <= section.lastPage; pi++) {
-      layouts.set(pi, layoutPage(pages[pi], pi === section.firstPage))
+      layouts.set(pi, layoutPage(pages[pi], pi === section.firstPage, bankTopic))
     }
 
     // Aday toplama: önce grup satırları (içlerindeki "N." öğeleri soru adayı sayılmasın)
@@ -368,9 +485,13 @@ export function detect(pages: PageText[]): Detection {
     }
   }
 
-  // 5) Cevap anahtarı
-  const keyPageTexts = keyPages.map((pi) => pages[pi])
-  const answerKey = parseAnswerKey(keyPageTexts, sections.map((s) => s.name), warnings)
+  // 5) Cevap anahtarı: ÖSYM'de anahtar sayfası, soru bankasında ÇÖZÜMLER sayfaları
+  const answerKey = bankMode
+    ? parseBankAnswers(
+        solutionPages.map((p) => ({ page: p, info: bankInfos[p.pageIndex] })),
+        warnings,
+      )
+    : parseAnswerKey(keyPages.map((pi) => pages[pi]), sections.map((s) => s.name), warnings)
 
   // 6) Dersler (kullanıcıya gösterilen bölünme): görülme sırasını koru, adı
   //    tekrar edenleri (ör. SB2'de iki "Felsefe Grubu") birleştir.
